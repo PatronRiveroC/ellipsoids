@@ -1,0 +1,808 @@
+---
+title: "Elipsoides"
+author: "Patron-Rivero, C."
+date: "2025"
+output: 
+  html_document: 
+    theme: journal
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+# Construir elipsoides {.tabset}
+
+Finalidad de construir los nichos de las especies? Mapas? ALgo más?
+
+Cuantificar la similitud o disimilitud entre múltiples nichos en los espacios ecológicos n-dimensionales. Calcular diversos atributos, y someterlos a análisis macroevolutivos, etc.
+
+## Insumos
+
+Para generarlos necesitamos nuestros datos georreferenciados y nuestras variables (que en este ejemplo son las variables a las que hicimos PCA).
+
+```{r warning = FALSE, message = FALSE}
+
+library(terra)
+
+occ <- read.csv("E:/5_Curso_ENM/2025/P_9/csv/P_oph.csv")
+head(occ[, 1:3])
+setwd("E:/5_Curso_ENM/2025/P_9/vars")
+vars <- list.files(pattern = ".tif")
+vars <- rast(vars)
+plot(vars)
+
+```
+
+# Formato necesario
+
+```{r warning = FALSE, message = FALSE}
+
+occ_vars <- extract(vars, occ[, c("Long", "Lat")], df = TRUE)
+occ_vars <- occ_vars[, -1]
+data <- na.omit(occ_vars)
+data <- as.data.frame(cbind(occ[, 2:3], data))
+head(data)
+
+```
+
+# Visualización
+
+## Elipsoide 2-D
+
+```{r warning = FALSE, message = FALSE}
+
+library(GGally)
+library(ggplot2)
+
+# Subset solo las columnas PC
+pc_data <- data[, paste0("pc_", 1:6)]
+
+# Graficar matriz de pares con elipses normales
+p <- ggpairs(pc_data,
+        lower = list(continuous = function(data, mapping, ...) {
+          ggplot(data = data, mapping = mapping) +
+            geom_point(alpha = 0.5) +
+            stat_ellipse(type = "norm", level = 0.99) +
+            theme_bw()
+        }),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.1)),
+        upper = list(continuous = wrap("cor", size = 4))
+)
+
+p
+
+```
+
+## Elipsoide 3-D
+
+Estimamos elipsoides de volumen mínimo que incluyan \h de \n registros
+
+¿Cuántas variables incluimos?
+
+```{r warning = FALSE, message = FALSE}
+
+library(ntbox)
+library(rgl)
+#library(devtools)
+#install_github("cran/rglwidget")
+library(rglwidget)
+
+head(data)
+
+# Calculamos los centroides y la matriz de covarianza
+covar_centroid <- cov_center(data, mve = TRUE, level = 0.95, vars = c(3:5))
+
+# Definimos el elipsoide
+ellipsoidMod <- ntbox::ellipsoidfit(raster::stack(vars[[1:3]]), covar_centroid$centroid, covar_centroid$covariance, level = 0.95, plot = TRUE, size = 1, alpha = 0.2)
+rgl::points3d(data[, c(3:5)], size = 2)
+rglwidget::rglwidget()
+
+```
+
+## Definir valor h y visualización
+
+Por qué hay puntos fuera?
+
+```{r warning = FALSE, message = FALSE}
+
+library(rgl)
+#library(devtools)
+#install_github("cran/rglwidget")
+library(rglwidget)
+
+# Crear los elipsoides
+ellipsoid_99 <- rgl::ellipse3d(covar_centroid$covariance, centre = covar_centroid$centroid, level = 0.99)
+ellipsoid_95 <- rgl::ellipse3d(covar_centroid$covariance, centre = covar_centroid$centroid, level = 0.95)
+ellipsoid_50 <- rgl::ellipse3d(covar_centroid$covariance, centre = covar_centroid$centroid, level = 0.50)
+
+# Calcular los límites para los ejes
+xlim <- range(c(ellipsoid_99$vb[1, ], ellipsoid_95$vb[1, ], ellipsoid_50$vb[1, ]))
+ylim <- range(c(ellipsoid_99$vb[2, ], ellipsoid_95$vb[2, ], ellipsoid_50$vb[2, ]))
+zlim <- range(c(ellipsoid_99$vb[3, ], ellipsoid_95$vb[3, ], ellipsoid_50$vb[3, ]))
+
+# Dibujar los elipsoides como mallas
+rgl::open3d()
+rgl::wire3d(ellipsoid_99, col = "blue")
+rgl::wire3d(ellipsoid_95, col = "red", add = TRUE)
+rgl::wire3d(ellipsoid_50, col = "green", add = TRUE)
+
+# Agregar el cubo con los ejes
+rgl::decorate3d(
+  xlim = xlim, ylim = ylim, zlim = zlim,
+  box = TRUE, axes = TRUE, top = TRUE,
+  xlab = "X", ylab = "Y", zlab = "Z",
+  col = "black"
+)
+
+rglwidget::rglwidget()
+
+```
+
+## Distancias de Mahalanobis
+
+¿Por qué Mahalanobis y no Euclideanas?
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/maha2.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/maha3.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/maha1.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/maha4.jpg", dpi = 150)
+
+```
+
+## Dualidad de Hutchinson
+
+  - Utilicé mis PCAs del continente americano.
+  - Mi especie está en centroamérica
+  - ¿Qué caracteriza el elipsoide?
+  - ¿Hasta dónde va a llegar la proyección del modelo con h de 50, 95 o 99?
+
+```{r warning = FALSE, message = FALSE}
+
+library(plotrix)
+library( leaflet)
+library(viridis)
+
+plot(vars[[1]])
+points(occ$Long, occ$Lat)
+draw.circle(-86.5, 15, 10, border = "red")
+draw.circle(-86.5, 15, 15, border = "blue")
+draw.circle(-86.5, 15, 20, border = "black")
+
+colors <- viridis(4)
+
+leaflet() %>%
+addTiles() %>%
+addRasterImage(ellipsoidMod$suitRaster, opacity = 0.5, colors = colorNumeric(c("transparent", colors), values(ellipsoidMod$suitRaster), na.color = "transparent")) %>%
+addCircleMarkers(data = occ, ~Long, ~Lat, radius = 2, color = "black", stroke = FALSE, fillOpacity = 0.2)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/hduality.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/hd2.jpg", dpi = 150)
+
+```
+
+# Atributos del nicho {.tabset}
+
+##  Tamaño del hipervolumen del nicho por métodos probabilísticos
+
+$$N_S = \int_{x \in N_R} dx$$
+
+- \(N_S\): Tamaño (volumen) del nicho realizado o ocupado por la especie.
+
+- \(N_R\): Espacio del nicho realizado, es decir, la región del espacio *n*-dimensional (ambiental) donde la especie realmente ocurre.
+
+¿Qué calcula?
+
+```{r warning = FALSE, message = FALSE}
+
+library(nicheROVER)
+
+x <- data[3:5] # Todos los valores de las especies
+Sighat <- var(x) # varianza de la muestra
+niche.size(Sigma = Sighat, alpha = .95)
+
+```
+
+## Volumen/Amplitud del nicho por MVE
+
+$$V_N = \frac43π \times k_xk_yk_z$$
+
+```{r warning = FALSE, message = FALSE}
+
+# Directo del elipsoide de ntbox
+covar_centroid <- cov_center(data, mve = TRUE, level = 0.95, vars = c(3:5))
+covar_centroid$niche_volume
+
+# Se puede calcular con los valores del elipsoide, el número de vectores (variables) y la longitud de los semiejes
+
+library(ellipsenm)
+ellipsoid_volume(3, covar_centroid$SemiAxis_length)
+
+# A mano
+
+Vn <- as.numeric(4/3 * (pi) * (covar_centroid$SemiAxis_length[1] * covar_centroid$SemiAxis_length[2] * covar_centroid$SemiAxis_length[3]))
+
+Vn
+
+```
+
+## Posición de nicho por MVE
+
+```{r warning = FALSE, message = FALSE}
+
+covar_centroid$centroid
+
+```
+
+## Outlying Mean Index (OMI)
+
+niche position (NP)
+environmental boundaries (EBs)
+niche breadths (NBs)
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/hd2.jpg", dpi = 150)
+
+```
+
+## Marginalidad
+
+https://nsojournals.onlinelibrary.wiley.com/doi/10.1111/ecog.07391
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/marg.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/marg2.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/marg3.jpg", dpi = 150)
+
+```
+
+## Análisis filogenéticos
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/PS.png", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ES.jpg", dpi = 150)
+
+```
+
+# Atributos entre 2 nichos / Comparación de nichos {.tabset}
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/over_1.png",dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/over_2.jpg",dpi = 150)
+
+```
+
+**¿Qué nichos puedo comparar?**
+
+## **Especies competidoras**
+
+https://link.springer.com/article/10.1007/s10530-020-02265-x
+
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/comp.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/comp_2.jpg", dpi = 150)
+
+```
+
+**Híbridos**
+
+https://onlinelibrary.wiley.com/doi/full/10.1111/ddi.12543
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/hyb.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/hyb_2.jpg", dpi = 150)
+
+```
+
+**Especies con algún rasgo morfológico, ecológico, evolutivo**
+
+https://www.nature.com/articles/s41467-021-22390-y
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/trait.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/trait_2.jpg", dpi = 150)
+
+```
+
+**Especies mutualistas, simbiontes o presas**
+
+https://www.sciencedirect.com/science/article/pii/S0169534723000265
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/trait.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/ejemplos/trait_2.jpg", dpi = 150)
+
+```
+
+# PNC / PND
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/pnc.jpg",dpi = 150)
+
+```
+
+**Especies cercanas filogenéticamente**
+
+**NOTA:** NO en todas las preguntas respondo PNC / DNC. Para esto, necesito una filogenia.
+
+## env-framework 2D
+
+**Broennimann et al. (2012)**
+
+### Sobrelape / Overlap
+
+Schoener’s D
+
+$$D(p_X, p_Y)=1- \frac12  \sum_{i}|p_{X, i} - p_{Y, i}|$$
+
+Hellinger’s I
+
+$$H(p_X, p_y) = 1 - \frac12 H(p_X, p_Y) $$
+Hellinger’s distance
+
+$$H(p_X, p_Y) = \sqrt{\sum_i(\sqrt{p_{X, i}} - \sqrt{p_{Y, i}} )}$$
+**A) Valor per-se**
+
+Es decir, cuál es la medida de sobrelape entre dos nichos (**especies?**)
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/over_3.jpg", dpi = 150)
+
+```
+
+## Ejemplo ecospat
+
+```{r warning = FALSE, message = FALSE}
+
+library(ecospat)
+library(raster)
+library(ade4)
+
+spp_NA <- ecospat.testNiche.nat
+spp_AU <- ecospat.testNiche.inv
+
+head(spp_NA)
+
+plot(raster("E:/5_Curso_ENM/2024/P_9/vars/global/bio_1.tif"))
+points(spp_NA[which(spp_NA[, 11]==1), 1:2], col = "blue")
+points(spp_AU[which(spp_AU[, 11]==1), 1:2], col = "red")
+
+pca.env <- dudi.pca(rbind(spp_NA,spp_AU)[,3:10],scannf = F, nf = 2)
+
+# valores del área global
+
+scores.globclim <- pca.env$li
+
+# valores del área de NA
+
+scores.clim.NA <- suprow(pca.env,spp_NA[, 3:10])$li
+
+# valores del área de AU
+
+scores.clim.AU <- suprow(pca.env,spp_AU[, 3:10])$li
+
+# valores de los registros en NA
+
+scores.sp.NA <- suprow(pca.env, spp_NA[which(spp_NA[, 11]==1), 3:10])$li
+
+# valores de los registros en AU
+
+scores.sp.AU <- suprow(pca.env, spp_AU[which(spp_AU[, 11]==1), 3:10])$li
+
+# creamos una matriz de densidades de ocurrencias en NA y AU
+
+grid.clim.NA <- ecospat.grid.clim.dyn(glob = scores.globclim, glob1 = scores.clim.NA, sp = scores.sp.NA, R = 100, th.sp = 0)
+
+grid.clim.AU <- ecospat.grid.clim.dyn(glob = scores.globclim, glob1 = scores.clim.AU, sp = scores.sp.AU, R = 100, th.sp = 0)
+
+overlap <- ecospat.niche.overlap(grid.clim.NA, grid.clim.AU, cor = T)
+
+overlap
+
+```
+
+### Pruebas de sobrelape
+
+Dado los índices de 0-1, mientras mayor sea el valor del índice, son más parecidos, cierto? A partir de qué punto puedo decir que mis dos nichos son similares o idénticos (equivalentes)?
+
+Necesito: Pruebas de hipótesis (Hipótesis nula)
+
+### Similitud
+
+**Hipótesis**
+
+El sobrelape del nicho de *Spp A* es mayor con el nicho de *Spp B* que con algúna zona al azar en el *background de Spp B*
+
+```{r warning = FALSE, message = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/hyp.jpg", dpi = 150)
+
+```
+
+**Direccionalidad - Unidireccional**
+
+Los valores para probar la hipótesis van a ser diferentes, por qué?
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+library(ggplot2)
+library(patchwork)
+
+set.seed(20)
+datos <- rnorm(1000, mean = 0.5, sd = 0.1)
+datos2 <- rnorm(1000, mean = 0.3, sd = 0.1)
+
+p <- ggplot() +
+  geom_density(aes(x = datos), fill = "lightblue", alpha = 0.5) +
+  geom_histogram(aes(x = datos, y = ..density..), bins = 20, color = "black", fill = "white", alpha = 0.2) +
+  labs(title = NULL, x = "Overlap", y = NULL) +
+  xlim(0, 1) +
+  theme_bw()
+
+p1 <- ggplot() +
+  geom_density(aes(x = datos2), fill = "lightblue", alpha = 0.5) +
+  geom_histogram(aes(x = datos2, y = ..density..), bins = 20, color = "black", fill = "white", alpha = 0.2) +
+  labs(title = NULL, x = "Overlap", y = NULL) +
+  xlim(0, 1) +
+  theme_bw()
+
+a <- p + p1
+p1 <- a + plot_annotation(theme = theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold")), 
+						  tag_levels = 'A', tag_suffix = ')')
+
+p1
+
+```
+
+## Ejemplo con ecospat
+
+```{r warning = FALSE, message = FALSE}
+
+library(ecospat)
+
+#se recomiendan 1000 rep
+
+# NA vs AU
+
+sim.test <- ecospat.niche.similarity.test(grid.clim.NA, grid.clim.AU, rep = 100, rand.type = 2)
+
+
+ecospat.plot.overlap.test(sim.test, "D", "Similitud de Nicho")
+
+ecospat.plot.overlap.test(sim.test, "I", "Similitud de Nicho")
+
+# AU vs NA
+
+sim.test <- ecospat.niche.similarity.test(grid.clim.AU, grid.clim.NA, rep = 100, rand.type = 2)
+
+ecospat.plot.overlap.test(sim.test, "D", "Similitud de Nicho")
+
+ecospat.plot.overlap.test(sim.test, "I", "Similitud de Nicho")
+
+```
+
+Entonces, qué quieren decir los resultados?
+
+## Ejemplo con ENMTools
+
+```{r warning = FALSE, message = FALSE}
+
+library(ENMTools)
+
+monticola <- iberolacerta.clade$species$monticola
+cyreni <- iberolacerta.clade$species$cyreni
+
+w <- raster("E:/5_Curso_ENM/2025/P_9/vars/global/bio_1.tif")
+e1 <- extent(raster::raster(monticola$range))
+
+plot(crop(w, e1))
+
+spp1 <- enmtools.ecospat.bg(monticola, cyreni, euro.worldclim[[1:2]], nback = 10000, nreps = 10)
+
+spp1$test.results$obs
+spp1$test.results$p.D
+spp1$test.results$p.I
+
+spp2 <-enmtools.ecospat.bg(cyreni, monticola, euro.worldclim[[1:2]], nback = 10000, nreps = 10)
+
+spp2$test.results$obs
+spp2$test.results$p.D
+spp2$test.results$p.I
+
+```
+
+### Equivalencia
+
+**Hipótesis**
+
+El sobrelape entre las especies **Spp A** y **Spp B** es mayor que el sobrelape de dos nichos al azar creados del **background de Spp A y de Spp B**.
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/hyp2.jpg", dpi = 150)
+
+```
+
+**Bidireccional**
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+library(ggplot2)
+library(patchwork)
+
+set.seed(20)
+datos <- rnorm(1000, mean = 0.5, sd = 0.1)
+datos2 <- rnorm(1000, mean = 0.3, sd = 0.1)
+
+p <- ggplot() +
+  geom_density(aes(x = datos), fill = "lightblue", alpha = 0.5) +
+  geom_histogram(aes(x = datos, y = ..density..), bins = 20, color = "black", fill = "white", alpha = 0.2) +
+  labs(title = NULL, x = "Overlap", y = NULL) +
+  xlim(0, 1) +
+  theme_bw()
+
+p1 <- ggplot() +
+  geom_density(aes(x = datos2), fill = "lightblue", alpha = 0.5) +
+  geom_histogram(aes(x = datos2, y = ..density..), bins = 20, color = "black", fill = "white", alpha = 0.2) +
+  labs(title = NULL, x = "Overlap", y = NULL) +
+  xlim(0, 1) +
+  theme_bw()
+
+a <- p + p
+p1 <- a + plot_annotation(theme = theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold")), 
+						  tag_levels = 'A', tag_suffix = ')')
+
+p1
+
+```
+
+Ejemplo con ecospat
+
+```{r warning = FALSE, message = FALSE}
+
+library(ecospat)
+
+# se recomiendan al menos 1000 rep
+
+eq.test <- ecospat.niche.equivalency.test(grid.clim.NA, grid.clim.AU, rep = 10)
+
+ecospat.plot.overlap.test(eq.test, "D", "Equivalencia de Nicho")
+
+ecospat.plot.overlap.test(eq.test, "I", "Equivalencia de Nicho")
+
+```
+
+Ejemplo con ENMTools
+
+```{r warning = FALSE, message = FALSE}
+
+library(ENMTools)
+
+monticola <- iberolacerta.clade$species$monticola
+cyreni <- iberolacerta.clade$species$cyreni
+
+w <- raster("E:/5_Curso_ENM/2024/P_9/vars/global/bio_1.tif")
+e1 <- extent(raster::raster(monticola$range))
+
+plot(crop(w, e1))
+
+spp1 <- enmtools.ecospat.id(monticola, cyreni, euro.worldclim[[1:2]], nback = 10000, nreps = 10)
+
+spp1$test.results$obs
+spp1$test.results$p.D
+spp1$test.results$p.I
+
+```
+
+## 5.2. Grinnellian perspective
+
+El nicho ecológico de una especie es convexo, posee un único óptimo y que la respuesta de la especie a cada variable covaría con la respuesta a otras variables
+
+### Jaccard similarity index
+
+Proceso similar a las pruebas de identidad. Pero con hipótesis diferentes.
+
+**Hipótesis**
+
+Existe un sobrelape significativo entre las especies *Spp A* y *Spp B*. 
+
+Entonces sólo se rechaza que sea peor que el azar.
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/jac_in.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/jac1.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/jac2.jpg", dpi = 150)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/grin_jacc.jpg", dpi = 150)
+
+```
+
+**Bidireccional**
+
+```{r warning = FALSE, message = FALSE}
+
+library(ellipsenm)
+
+occurrences <- read.csv(system.file("extdata", "occurrences.csv", package = "ellipsenm"))
+head(occurrences)
+
+vars <- raster::stack(list.files(system.file("extdata", package = "ellipsenm"), pattern = "bio", full.names = TRUE))
+
+vext <- raster::extent(vars)
+ext1 <- raster::extent(vext[1], (mean(vext[1:2]) + 0.2), vext[3:4])
+ext2 <- raster::extent((mean(vext[1:2]) + 0.2), vext[2], vext[3:4])
+
+vars1 <- raster::stack(raster::crop(vars, ext1))
+vars2 <- raster::stack(raster::crop(vars, ext2))
+
+plot(vars1)
+plot(vars2)
+
+occurrences1 <- occurrences[occurrences$longitude < (mean(vext[1:2]) + 0.2), ]
+occurrences2 <- occurrences[!occurrences$longitude %in% occurrences1$longitude, ]
+
+niche1 <- overlap_object(occurrences1, species =  "species", longitude = "longitude", latitude = "latitude", method = "covmat", level = 95, variables = vars1)
+
+niche2 <- overlap_object(occurrences2, species =  "species", longitude = "longitude", latitude = "latitude", method = "covmat", level = 95, variables = vars2)
+
+```
+
+```{r warning = FALSE, message = FALSE, eval = FALSE}
+
+overlap_st1 <- ellipsoid_overlap(niche1, niche2, overlap_type = "all", significance_test = TRUE, replicates = 1000)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+overlap_st1 <- ellipsoid_overlap(niche1, niche2, overlap_type = "all", significance_test = TRUE, replicates = 5)
+
+```
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+library(ggplot2)
+library(patchwork)
+
+histo <- function(dat, variable, line, line2 = NULL, title = NULL) {
+	
+	dat <- as.data.frame(dat)
+	variable <- as.numeric(variable)
+			
+	if (!is.null(title)) {
+		title <- title
+			} else {
+				title <- paste0("Niche 1", " vs ", "Niche 2")
+					title <- title[[1]]
+	}
+		
+	if (!is.null(line2)) {
+	
+		ggplot(dat, aes(x = variable, fill = variable)) +
+			geom_histogram(fill = "#78c679", color = "black", alpha = 0.2, bins = 30) +
+			geom_segment(aes(x = line, y = Inf, xend = line, yend = 0.01), color = "#ef3b2c", size = 0.5, arrow = arrow(length = unit(0.2, "cm"))) +
+			geom_segment(aes(x = line2, y = Inf, xend = line2, yend = 0), color = "black", size = 0.4, linetype = "dashed") +
+			ggtitle(title) +
+			labs(x = NULL, y = NULL) +
+			theme_bw() +
+			labs(x = "Niche random overlap", y = "Frequency") +
+			theme(plot.title = element_text(hjust = 0.9, vjust = 0.5, margin = margin(t = 40, b = -30)))
+		} else {
+
+			line2 <- r_5 <- quantile(variable, 0.05)
+
+			ggplot(dat, aes(x = variable, fill = variable)) +
+				geom_histogram(fill = "#78c679", color = "black", alpha = 0.2, bins = 30) +
+				geom_segment(aes(x = line, y = Inf, xend = line, yend = 0.01), color = "#ef3b2c", size = 0.5, arrow = arrow(length = unit(0.2, "cm"))) +
+				geom_segment(aes(x = line2, y = Inf, xend = line2, yend = 0), color = "black", size = 0.4, linetype = "dashed") +
+				ggtitle(title) +
+				labs(x = NULL, y = NULL) +
+				theme_bw() +
+				labs(x = "Niche random overlap", y = "Frequency") +
+				theme(plot.title = element_text(hjust = 0.9, vjust = 0.5, margin = margin(t = 40, b = -30)))
+		
+	}
+}		
+
+over1 <- overlap_st1@significance_results$full_random$Niche_1_vs_2[, 3]
+
+over2 <- overlap_st1@significance_results$union_random$Niche_1_vs_2[, 3]
+
+a <- cbind(over1, over2)
+colnames(a) <- c("full", "bg")
+a <- as.data.frame(a)
+
+hist1 <- histo(dat = a, variable = a$full, line = overlap_st1@union_overlap$overlap, title = "full overlap C_mex1 ↔ C_mex2 p = 0")
+
+hist2 <- histo(dat = a, variable = a$bg, line = overlap_st1@union_overlap$overlap, title = "union overlap C_mex1 ↔ C_mex2 p = 0")
+
+a <- hist1 + hist2
+p1 <- a + plot_annotation(theme = theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold")), 
+						  tag_levels = 'A', tag_suffix = ')')
+
+p1
+
+```
+
+**Mis especies tienen mayor sobrelape con las especies emparentadas o con las no emparentadas?**
+
+**Los nichos se sobrelapan por su cercanía filogenética (PNC) o por coincidencia ambiental?**
+
+**Los nichos se sobrelapan más entre sí o entre el ambiente?**
+
+```{r warning = FALSE, message = FALSE, echo = FALSE}
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/PNC_1.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/PNC_2.jpg", dpi = 150)
+
+knitr::include_graphics("E:/5_Curso_ENM/2025/P_9/PNC_3.jpg", dpi = 150)
+
+```
